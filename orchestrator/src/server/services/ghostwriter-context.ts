@@ -1,0 +1,183 @@
+import { badRequest, notFound } from "@infra/errors";
+import { logger } from "@infra/logger";
+import { sanitizeUnknown } from "@infra/sanitize";
+import type { Job, ResumeProfile } from "@shared/types";
+import * as jobsRepo from "../repositories/jobs";
+import {
+  getWritingLanguageLabel,
+  resolveWritingOutputLanguage,
+} from "./output-language";
+import { getProfile } from "./profile";
+import {
+  getWritingStyle,
+  stripLanguageDirectivesFromConstraints,
+  type WritingStyle,
+} from "./writing-style";
+
+export type JobChatPromptContext = {
+  job: Job;
+  style: WritingStyle;
+  systemPrompt: string;
+  jobSnapshot: string;
+  profileSnapshot: string;
+};
+
+const MAX_JOB_DESCRIPTION = 4000;
+const MAX_PROFILE_SUMMARY = 1200;
+const MAX_SKILLS = 18;
+const MAX_PROJECTS = 6;
+const MAX_EXPERIENCE = 5;
+const MAX_ITEM_TEXT = 320;
+
+function truncate(value: string | null | undefined, max: number): string {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, max)}...`;
+}
+
+function compactJoin(parts: Array<string | null | undefined>): string {
+  return parts.filter(Boolean).join("\n");
+}
+
+function buildJobSnapshot(job: Job): string {
+  const snapshot = {
+    event: "job.completed",
+    sentAt: new Date().toISOString(),
+    job: {
+      id: job.id,
+      source: job.source,
+      title: job.title,
+      employer: job.employer,
+      location: job.location,
+      salary: job.salary,
+      status: job.status,
+      jobUrl: job.jobUrl,
+      applicationLink: job.applicationLink,
+      suitabilityScore: job.suitabilityScore,
+      suitabilityReason: truncate(job.suitabilityReason, 600),
+      tailoredSummary: truncate(job.tailoredSummary, 1200),
+      tailoredHeadline: truncate(job.tailoredHeadline, 300),
+      tailoredSkills: truncate(job.tailoredSkills, 1200),
+      jobDescription: truncate(job.jobDescription, MAX_JOB_DESCRIPTION),
+    },
+  };
+
+  return JSON.stringify(snapshot, null, 2);
+}
+
+function buildProfileSnapshot(profile: ResumeProfile): string {
+  const summary =
+    truncate(profile?.sections?.summary?.content, MAX_PROFILE_SUMMARY) ||
+    truncate(profile?.basics?.summary, MAX_PROFILE_SUMMARY);
+
+  const skills = (profile?.sections?.skills?.items ?? [])
+    .slice(0, MAX_SKILLS)
+    .map((item) => {
+      const keywords = (item.keywords ?? []).slice(0, 8).join(", ");
+      return `${item.name}${keywords ? `: ${keywords}` : ""}`;
+    });
+
+  const projects = (profile?.sections?.projects?.items ?? [])
+    .filter((item) => item.visible !== false)
+    .slice(0, MAX_PROJECTS)
+    .map(
+      (item) =>
+        `${item.name} (${item.date || "n/a"}): ${truncate(item.summary, MAX_ITEM_TEXT)}`,
+    );
+
+  const experience = (profile?.sections?.experience?.items ?? [])
+    .filter((item) => item.visible !== false)
+    .slice(0, MAX_EXPERIENCE)
+    .map(
+      (item) =>
+        `${item.position} @ ${item.company} (${item.date || "n/a"}): ${truncate(item.summary, MAX_ITEM_TEXT)}`,
+    );
+
+  return compactJoin([
+    `Name: ${profile?.basics?.name || "Unknown"}`,
+    `Headline: ${truncate(profile?.basics?.headline || profile?.basics?.label, 200) || ""}`,
+    summary ? `Summary:\n${summary}` : null,
+    skills.length > 0 ? `Skills:\n- ${skills.join("\n- ")}` : null,
+    projects.length > 0 ? `Projects:\n- ${projects.join("\n- ")}` : null,
+    experience.length > 0 ? `Experience:\n- ${experience.join("\n- ")}` : null,
+  ]);
+}
+
+function buildSystemPrompt(
+  style: WritingStyle,
+  profile: ResumeProfile,
+): string {
+  const resolvedLanguage = resolveWritingOutputLanguage({
+    style,
+    profile,
+  });
+  const outputLanguage = getWritingLanguageLabel(resolvedLanguage.language);
+  const effectiveConstraints = stripLanguageDirectivesFromConstraints(
+    style.constraints,
+  );
+
+  return compactJoin([
+    "You are Ghostwriter, a job-application writing assistant for a single job.",
+    "Use only the provided job and profile context unless the user gives extra details.",
+    "Do not claim actions were executed. You are read-only and advisory.",
+    "If details are missing, say what is missing before making assumptions.",
+    "Avoid exposing private profile details that are unrelated to the user request.",
+    "Follow the user's requested output language exactly when they specify one.",
+    `When the user does not request a language, default to writing user-visible resume or application content in ${outputLanguage}.`,
+    `When suggesting a headline or job title, preserve the original wording instead of translating it.`,
+    `Writing style tone: ${style.tone}.`,
+    `Writing style formality: ${style.formality}.`,
+    effectiveConstraints
+      ? `Writing constraints: ${effectiveConstraints}`
+      : null,
+    style.doNotUse ? `Avoid these terms: ${style.doNotUse}` : null,
+  ]);
+}
+
+export async function buildJobChatPromptContext(
+  jobId: string,
+): Promise<JobChatPromptContext> {
+  const job = await jobsRepo.getJobById(jobId);
+  if (!job) {
+    throw notFound("Job not found");
+  }
+
+  const style = await getWritingStyle();
+
+  let profile: ResumeProfile = {};
+  try {
+    profile = await getProfile();
+  } catch (error) {
+    logger.warn("Failed to load profile for job chat context", {
+      jobId,
+      error: sanitizeUnknown(error),
+    });
+  }
+
+  const profileSnapshot = buildProfileSnapshot(profile);
+  const systemPrompt = buildSystemPrompt(style, profile);
+  const jobSnapshot = buildJobSnapshot(job);
+
+  if (!jobSnapshot.trim()) {
+    throw badRequest("Unable to build job context");
+  }
+
+  logger.info("Built job chat context", {
+    jobId,
+    includesProfile: Boolean(profileSnapshot),
+    contextStats: sanitizeUnknown({
+      systemChars: systemPrompt.length,
+      jobChars: jobSnapshot.length,
+      profileChars: profileSnapshot.length,
+    }),
+  });
+
+  return {
+    job,
+    style,
+    systemPrompt,
+    jobSnapshot,
+    profileSnapshot,
+  };
+}
