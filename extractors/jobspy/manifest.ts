@@ -12,6 +12,11 @@ function isJobSpySite(source: string): source is JobSpySite {
   return JOBSPY_SOURCES.has(source as JobSpySite);
 }
 
+function parseBooleanSetting(raw: string | undefined): boolean | undefined {
+  if (!raw) return undefined;
+  return raw === "1" || raw === "true";
+}
+
 export const manifest: ExtractorManifest = {
   id: "jobspy",
   displayName: "JobSpy",
@@ -32,6 +37,7 @@ export const manifest: ExtractorManifest = {
         ? parseInt(context.settings.jobspyResultsWanted, 10)
         : undefined,
       countryIndeed: context.settings.jobspyCountryIndeed,
+      isRemote: parseBooleanSetting(context.settings.jobspyIsRemote),
       onProgress: (event) => {
         if (context.shouldCancel?.()) return;
 

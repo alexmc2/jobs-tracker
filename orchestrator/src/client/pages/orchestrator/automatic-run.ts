@@ -13,6 +13,8 @@ export interface AutomaticRunValues {
   runBudget: number;
   country: string;
   cityLocations: string[];
+  isRemoteOnly: boolean;
+  includeCountryRemote: boolean;
 }
 
 export interface AutomaticPresetValues {

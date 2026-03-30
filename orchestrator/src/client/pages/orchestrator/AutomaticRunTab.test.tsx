@@ -344,4 +344,80 @@ describe("AutomaticRunTab", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Glassdoor" })).toBeEnabled();
   });
+
+  it("loads the remote-only preference from settings", () => {
+    render(
+      <AutomaticRunTab
+        open
+        settings={createAppSettings({
+          jobspyIsRemote: {
+            value: true,
+            default: false,
+            override: true,
+          },
+        })}
+        enabledSources={["linkedin"]}
+        pipelineSources={["linkedin"]}
+        onToggleSource={vi.fn()}
+        onSetPipelineSources={vi.fn()}
+        isPipelineRunning={false}
+        onSaveAndRun={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Advanced settings" }));
+
+    expect(screen.getByLabelText("Remote only")).toBeChecked();
+  });
+
+  it("loads the include-country-remote preference from settings", () => {
+    render(
+      <AutomaticRunTab
+        open
+        settings={createAppSettings({
+          includeCountryRemote: {
+            value: false,
+            default: true,
+            override: false,
+          },
+        })}
+        enabledSources={["linkedin"]}
+        pipelineSources={["linkedin"]}
+        onToggleSource={vi.fn()}
+        onSetPipelineSources={vi.fn()}
+        isPipelineRunning={false}
+        onSaveAndRun={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Advanced settings" }));
+
+    expect(
+      screen.getByLabelText("Include country-wide remote jobs"),
+    ).not.toBeChecked();
+  });
+
+  it("adds suggested developer roles into the search terms list", () => {
+    render(
+      <AutomaticRunTab
+        open
+        settings={createAppSettings()}
+        enabledSources={["linkedin"]}
+        pipelineSources={["linkedin"]}
+        onToggleSource={vi.fn()}
+        onSetPipelineSources={vi.fn()}
+        isPipelineRunning={false}
+        onSaveAndRun={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Full-Stack Developer" }),
+    );
+    fireEvent.focus(screen.getByPlaceholderText("Type and press Enter"));
+
+    expect(
+      screen.getByRole("button", { name: "Remove Full-Stack Developer" }),
+    ).toBeInTheDocument();
+  });
 });

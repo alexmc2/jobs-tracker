@@ -312,6 +312,386 @@ describe("discoverJobsStep", () => {
     ).toBe(true);
   });
 
+  it("drops discovered jobs whose location clearly mismatches the selected country", async () => {
+    const settingsRepo = await import("@server/repositories/settings");
+    const registryModule = await import("@server/extractors/registry");
+
+    const jobspyManifest = {
+      id: "jobspy",
+      displayName: "JobSpy",
+      providesSources: ["indeed", "linkedin", "glassdoor"],
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        jobs: [
+          {
+            source: "linkedin",
+            title: "Engineer",
+            employer: "ACME",
+            location: "London, United Kingdom",
+            jobUrl: "https://example.com/job-uk",
+          },
+          {
+            source: "linkedin",
+            title: "Engineer",
+            employer: "Contoso",
+            location: "New York, United States",
+            jobUrl: "https://example.com/job-us",
+          },
+          {
+            source: "linkedin",
+            title: "Remote Engineer",
+            employer: "Remote Co",
+            location: "Remote",
+            jobUrl: "https://example.com/job-remote",
+          },
+        ],
+      }),
+    };
+
+    vi.mocked(settingsRepo.getAllSettings).mockResolvedValue({
+      searchTerms: JSON.stringify(["engineer"]),
+      jobspyCountryIndeed: "united kingdom",
+    } as any);
+
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([["jobspy", jobspyManifest as any]]),
+      manifestBySource: new Map([
+        ["indeed", jobspyManifest as any],
+        ["linkedin", jobspyManifest as any],
+        ["glassdoor", jobspyManifest as any],
+      ]),
+      availableSources: ["indeed", "linkedin", "glassdoor"],
+    } as any);
+
+    const result = await discoverJobsStep({
+      mergedConfig: {
+        ...baseConfig,
+        sources: ["linkedin"],
+      },
+    });
+
+    expect(result.discoveredJobs.map((job) => job.jobUrl)).toEqual([
+      "https://example.com/job-uk",
+      "https://example.com/job-remote",
+    ]);
+  });
+
+  it("filters discovered jobs to explicit remote roles when remote-only is enabled", async () => {
+    const settingsRepo = await import("@server/repositories/settings");
+    const registryModule = await import("@server/extractors/registry");
+
+    const jobspyManifest = {
+      id: "jobspy",
+      displayName: "JobSpy",
+      providesSources: ["indeed", "linkedin", "glassdoor"],
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        jobs: [
+          {
+            source: "linkedin",
+            title: "Remote Full-Stack Developer",
+            employer: "Remote Co",
+            isRemote: true,
+            jobUrl: "https://example.com/job-1",
+          },
+          {
+            source: "linkedin",
+            title: "Backend Engineer",
+            employer: "Office Co",
+            location: "London, United Kingdom",
+            jobUrl: "https://example.com/job-2",
+          },
+          {
+            source: "linkedin",
+            title: "Frontend Engineer",
+            employer: "Hybrid Co",
+            location: "Remote within the UK",
+            jobUrl: "https://example.com/job-3",
+          },
+        ],
+      }),
+    };
+
+    vi.mocked(settingsRepo.getAllSettings).mockResolvedValue({
+      searchTerms: JSON.stringify(["engineer"]),
+      jobspyCountryIndeed: "united kingdom",
+      jobspyIsRemote: "1",
+    } as any);
+
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([["jobspy", jobspyManifest as any]]),
+      manifestBySource: new Map([
+        ["indeed", jobspyManifest as any],
+        ["linkedin", jobspyManifest as any],
+        ["glassdoor", jobspyManifest as any],
+      ]),
+      availableSources: ["indeed", "linkedin", "glassdoor"],
+    } as any);
+
+    const result = await discoverJobsStep({
+      mergedConfig: {
+        ...baseConfig,
+        sources: ["linkedin"],
+      },
+    });
+
+    expect(result.discoveredJobs.map((job) => job.jobUrl)).toEqual([
+      "https://example.com/job-1",
+      "https://example.com/job-3",
+    ]);
+  });
+
+  it("drops low-signal search tags and pseudo-locations from saved discovery settings", async () => {
+    const settingsRepo = await import("@server/repositories/settings");
+    const registryModule = await import("@server/extractors/registry");
+
+    const jobspyManifest = {
+      id: "jobspy",
+      displayName: "JobSpy",
+      providesSources: ["indeed", "linkedin", "glassdoor"],
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        jobs: [
+          {
+            source: "linkedin",
+            title: "Backend Developer",
+            employer: "ACME",
+            location: "London, United Kingdom",
+            jobUrl: "https://example.com/job-london",
+          },
+          {
+            source: "linkedin",
+            title: "Backend Developer",
+            employer: "ACME",
+            location: "Manchester, United Kingdom",
+            jobUrl: "https://example.com/job-manchester",
+          },
+        ],
+      }),
+    };
+
+    vi.mocked(settingsRepo.getAllSettings).mockResolvedValue({
+      searchTerms: JSON.stringify([
+        "backend developer",
+        "remote",
+        "APIs",
+        "React",
+      ]),
+      searchCities: "London|remote",
+      jobspyCountryIndeed: "united kingdom",
+    } as any);
+
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([["jobspy", jobspyManifest as any]]),
+      manifestBySource: new Map([
+        ["indeed", jobspyManifest as any],
+        ["linkedin", jobspyManifest as any],
+        ["glassdoor", jobspyManifest as any],
+      ]),
+      availableSources: ["indeed", "linkedin", "glassdoor"],
+    } as any);
+
+    const result = await discoverJobsStep({
+      mergedConfig: {
+        ...baseConfig,
+        sources: ["linkedin"],
+      },
+    });
+
+    expect(jobspyManifest.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        searchTerms: ["backend developer"],
+      }),
+    );
+    expect(result.discoveredJobs.map((job) => job.jobUrl)).toEqual([
+      "https://example.com/job-london",
+    ]);
+  });
+
+  it("keeps city jobs and country-scoped remote jobs when includeCountryRemote is on", async () => {
+    const settingsRepo = await import("@server/repositories/settings");
+    const registryModule = await import("@server/extractors/registry");
+
+    const jobspyManifest = {
+      id: "jobspy",
+      displayName: "JobSpy",
+      providesSources: ["indeed", "linkedin", "glassdoor"],
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        jobs: [
+          {
+            source: "linkedin",
+            title: "Engineer",
+            employer: "ACME",
+            location: "London, United Kingdom",
+            jobUrl: "https://example.com/job-london",
+          },
+          {
+            source: "linkedin",
+            title: "Remote Engineer",
+            employer: "Remote Co",
+            location: "Remote, United Kingdom",
+            isRemote: true,
+            jobUrl: "https://example.com/job-remote-uk",
+          },
+          {
+            source: "linkedin",
+            title: "Engineer",
+            employer: "North Co",
+            location: "Manchester, United Kingdom",
+            jobUrl: "https://example.com/job-manchester",
+          },
+          {
+            source: "linkedin",
+            title: "Remote Engineer",
+            employer: "MX Co",
+            location: "Remote, Mexico",
+            isRemote: true,
+            jobUrl: "https://example.com/job-remote-mx",
+          },
+        ],
+      }),
+    };
+
+    vi.mocked(settingsRepo.getAllSettings).mockResolvedValue({
+      searchTerms: JSON.stringify(["engineer"]),
+      searchCities: "London",
+      jobspyCountryIndeed: "united kingdom",
+      includeCountryRemote: "1",
+    } as any);
+
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([["jobspy", jobspyManifest as any]]),
+      manifestBySource: new Map([
+        ["indeed", jobspyManifest as any],
+        ["linkedin", jobspyManifest as any],
+        ["glassdoor", jobspyManifest as any],
+      ]),
+      availableSources: ["indeed", "linkedin", "glassdoor"],
+    } as any);
+
+    const result = await discoverJobsStep({
+      mergedConfig: { ...baseConfig, sources: ["linkedin"] },
+    });
+
+    expect(result.discoveredJobs.map((job) => job.jobUrl)).toEqual([
+      "https://example.com/job-london",
+      "https://example.com/job-remote-uk",
+    ]);
+  });
+
+  it("only keeps city jobs when includeCountryRemote is off", async () => {
+    const settingsRepo = await import("@server/repositories/settings");
+    const registryModule = await import("@server/extractors/registry");
+
+    const jobspyManifest = {
+      id: "jobspy",
+      displayName: "JobSpy",
+      providesSources: ["indeed", "linkedin", "glassdoor"],
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        jobs: [
+          {
+            source: "linkedin",
+            title: "Engineer",
+            employer: "ACME",
+            location: "London, United Kingdom",
+            jobUrl: "https://example.com/job-london",
+          },
+          {
+            source: "linkedin",
+            title: "Remote Engineer",
+            employer: "Remote Co",
+            location: "Remote, United Kingdom",
+            isRemote: true,
+            jobUrl: "https://example.com/job-remote-uk",
+          },
+        ],
+      }),
+    };
+
+    vi.mocked(settingsRepo.getAllSettings).mockResolvedValue({
+      searchTerms: JSON.stringify(["engineer"]),
+      searchCities: "London",
+      jobspyCountryIndeed: "united kingdom",
+      includeCountryRemote: "0",
+    } as any);
+
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([["jobspy", jobspyManifest as any]]),
+      manifestBySource: new Map([
+        ["indeed", jobspyManifest as any],
+        ["linkedin", jobspyManifest as any],
+        ["glassdoor", jobspyManifest as any],
+      ]),
+      availableSources: ["indeed", "linkedin", "glassdoor"],
+    } as any);
+
+    const result = await discoverJobsStep({
+      mergedConfig: { ...baseConfig, sources: ["linkedin"] },
+    });
+
+    expect(result.discoveredJobs.map((job) => job.jobUrl)).toEqual([
+      "https://example.com/job-london",
+    ]);
+  });
+
+  it("passes all jobs through when no cities are set regardless of includeCountryRemote", async () => {
+    const settingsRepo = await import("@server/repositories/settings");
+    const registryModule = await import("@server/extractors/registry");
+
+    const jobspyManifest = {
+      id: "jobspy",
+      displayName: "JobSpy",
+      providesSources: ["indeed", "linkedin", "glassdoor"],
+      run: vi.fn().mockResolvedValue({
+        success: true,
+        jobs: [
+          {
+            source: "linkedin",
+            title: "Engineer",
+            employer: "ACME",
+            location: "London, United Kingdom",
+            jobUrl: "https://example.com/job-london",
+          },
+          {
+            source: "linkedin",
+            title: "Remote Engineer",
+            employer: "Remote Co",
+            location: "Remote, United Kingdom",
+            isRemote: true,
+            jobUrl: "https://example.com/job-remote-uk",
+          },
+        ],
+      }),
+    };
+
+    vi.mocked(settingsRepo.getAllSettings).mockResolvedValue({
+      searchTerms: JSON.stringify(["engineer"]),
+      jobspyCountryIndeed: "united kingdom",
+      includeCountryRemote: "1",
+    } as any);
+
+    vi.mocked(registryModule.getExtractorRegistry).mockResolvedValue({
+      manifests: new Map([["jobspy", jobspyManifest as any]]),
+      manifestBySource: new Map([
+        ["indeed", jobspyManifest as any],
+        ["linkedin", jobspyManifest as any],
+        ["glassdoor", jobspyManifest as any],
+      ]),
+      availableSources: ["indeed", "linkedin", "glassdoor"],
+    } as any);
+
+    const result = await discoverJobsStep({
+      mergedConfig: { ...baseConfig, sources: ["linkedin"] },
+    });
+
+    expect(result.discoveredJobs.map((job) => job.jobUrl)).toEqual([
+      "https://example.com/job-london",
+      "https://example.com/job-remote-uk",
+    ]);
+  });
+
   it("tracks source completion counters across source transitions", async () => {
     const settingsRepo = await import("@server/repositories/settings");
     const jobsRepo = await import("@server/repositories/jobs");

@@ -159,6 +159,8 @@ export interface AppSettings {
   searchCities: Resolved<string>;
   jobspyResultsWanted: Resolved<number>;
   jobspyCountryIndeed: Resolved<string>;
+  jobspyIsRemote: Resolved<boolean>;
+  includeCountryRemote: Resolved<boolean>;
   showSponsorInfo: Resolved<boolean>;
   chatStyleTone: Resolved<string>;
   chatStyleFormality: Resolved<string>;

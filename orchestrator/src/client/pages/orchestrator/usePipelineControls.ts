@@ -1,6 +1,10 @@
 import * as api from "@client/api";
 import { useSettings } from "@client/hooks/useSettings";
 import {
+  sanitizeDiscoveryLocations,
+  sanitizeDiscoverySearchTerms,
+} from "@shared/discovery-inputs.js";
+import {
   formatCountryLabel,
   getCompatibleSourcesForCountry,
 } from "@shared/location-support.js";
@@ -157,6 +161,32 @@ export function usePipelineControls(
 
   const handleSaveAndRunAutomatic = useCallback(
     async (values: AutomaticRunValues) => {
+      const sanitizedSearchTerms = sanitizeDiscoverySearchTerms(
+        values.searchTerms,
+      );
+      const sanitizedCityLocations = sanitizeDiscoveryLocations(
+        values.cityLocations,
+      );
+
+      if (sanitizedSearchTerms.accepted.length === 0) {
+        toast.error(
+          "Use full role searches like backend developer, not standalone tags like remote or API.",
+        );
+        return;
+      }
+
+      if (sanitizedSearchTerms.dropped.length > 0) {
+        toast.message("Ignored broad search tags", {
+          description: sanitizedSearchTerms.dropped.join(", "),
+        });
+      }
+
+      if (sanitizedCityLocations.dropped.length > 0) {
+        toast.message("Ignored non-city locations", {
+          description: sanitizedCityLocations.dropped.join(", "),
+        });
+      }
+
       const compatibleSources = getCompatibleSourcesForCountry(
         pipelineSources,
         values.country,
@@ -170,7 +200,7 @@ export function usePipelineControls(
 
       const limits = deriveExtractorLimits({
         budget: values.runBudget,
-        searchTerms: values.searchTerms,
+        searchTerms: sanitizedSearchTerms.accepted,
         sources: compatibleSources,
       });
       const hasJobSpySite = compatibleSources.some(
@@ -183,7 +213,7 @@ export function usePipelineControls(
       const hasHiringCafe = compatibleSources.includes("hiringcafe");
       const hasStartupJobs = compatibleSources.includes("startupjobs");
       const serializedCities = serializeCityLocationsSetting(
-        values.cityLocations,
+        sanitizedCityLocations.accepted,
       );
       const searchCities =
         (hasJobSpySite || hasAdzuna || hasHiringCafe || hasStartupJobs) &&
@@ -191,13 +221,15 @@ export function usePipelineControls(
           ? serializedCities
           : formatCountryLabel(values.country);
       await api.updateSettings({
-        searchTerms: values.searchTerms,
+        searchTerms: sanitizedSearchTerms.accepted,
         jobspyResultsWanted: limits.jobspyResultsWanted,
         gradcrackerMaxJobsPerTerm: limits.gradcrackerMaxJobsPerTerm,
         ukvisajobsMaxJobs: limits.ukvisajobsMaxJobs,
         adzunaMaxJobsPerTerm: limits.adzunaMaxJobsPerTerm,
         startupjobsMaxJobsPerTerm: limits.startupjobsMaxJobsPerTerm,
         jobspyCountryIndeed: values.country,
+        jobspyIsRemote: values.isRemoteOnly,
+        includeCountryRemote: values.includeCountryRemote,
         searchCities,
       });
       await refreshSettings();
@@ -208,8 +240,8 @@ export function usePipelineControls(
         analytics: {
           mode: "automatic",
           country: values.country,
-          hasCityLocations: values.cityLocations.length > 0,
-          searchTermsCount: values.searchTerms.length,
+          hasCityLocations: sanitizedCityLocations.accepted.length > 0,
+          searchTermsCount: sanitizedSearchTerms.accepted.length,
         },
       });
       setIsRunModeModalOpen(false);

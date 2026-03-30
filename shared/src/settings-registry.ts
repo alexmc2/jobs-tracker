@@ -294,6 +294,24 @@ export const settingsRegistry = {
     serialize: (value: string | null | undefined): string | null =>
       value ?? null,
   },
+  jobspyIsRemote: {
+    kind: "typed" as const,
+    envKey: "JOBSPY_IS_REMOTE",
+    schema: z.boolean(),
+    default: (): boolean =>
+      typeof process !== "undefined"
+        ? (parseBitBoolOrNull(process.env.JOBSPY_IS_REMOTE) ?? false)
+        : false,
+    parse: parseBitBoolOrNull,
+    serialize: serializeBitBool,
+  },
+  includeCountryRemote: {
+    kind: "typed" as const,
+    schema: z.boolean(),
+    default: (): boolean => true,
+    parse: parseBitBoolOrNull,
+    serialize: serializeBitBool,
+  },
   showSponsorInfo: {
     kind: "typed" as const,
     schema: z.boolean(),

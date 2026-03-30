@@ -5,9 +5,14 @@ import { getAllJobUrls } from "@server/repositories/jobs";
 import * as settingsRepo from "@server/repositories/settings";
 import { asyncPool } from "@server/utils/async-pool";
 import {
+  sanitizeDiscoveryLocations,
+  sanitizeDiscoverySearchTerms,
+} from "@shared/discovery-inputs.js";
+import {
   formatCountryLabel,
   isSourceAllowedForCountry,
   normalizeCountryKey,
+  SUPPORTED_COUNTRY_INPUTS,
 } from "@shared/location-support.js";
 import { normalizeStringArray } from "@shared/normalize-string-array.js";
 import {
@@ -31,6 +36,30 @@ type DiscoverySourceTask = {
   detail: string;
   run: () => Promise<DiscoveryTaskResult>;
 };
+
+const COUNTRY_LOCATION_MATCHERS = Array.from(
+  new Map(
+    (
+      [
+        ...SUPPORTED_COUNTRY_INPUTS.map(
+          (value) =>
+            [
+              normalizeLocationMatchText(value),
+              normalizeCountryKey(value),
+            ] as const,
+        ),
+        [normalizeLocationMatchText("england"), "united kingdom"] as const,
+        [normalizeLocationMatchText("scotland"), "united kingdom"] as const,
+        [normalizeLocationMatchText("wales"), "united kingdom"] as const,
+        [
+          normalizeLocationMatchText("northern ireland"),
+          "united kingdom",
+        ] as const,
+        [normalizeLocationMatchText("uae"), "united arab emirates"] as const,
+      ] as ReadonlyArray<readonly [string, string]>
+    ).filter(([token]) => token.length > 0),
+  ).entries(),
+).sort((a, b) => b[0].length - a[0].length);
 
 function parseBlockedCompanyKeywords(raw: string | undefined): string[] {
   if (!raw) return [];
@@ -57,24 +86,92 @@ function isBlockedEmployer(
   );
 }
 
+function parseBooleanSetting(raw: string | undefined): boolean {
+  return raw === "1" || raw === "true";
+}
+
+function normalizeLocationMatchText(value: string | null | undefined): string {
+  return (value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function inferCountriesFromLocation(
+  location: string | null | undefined,
+): string[] {
+  const normalizedLocation = normalizeLocationMatchText(location);
+  if (!normalizedLocation) return [];
+
+  const haystack = ` ${normalizedLocation} `;
+  const matchedCountries = new Set<string>();
+
+  for (const [token, country] of COUNTRY_LOCATION_MATCHERS) {
+    if (haystack.includes(` ${token} `)) {
+      matchedCountries.add(country);
+    }
+  }
+
+  return Array.from(matchedCountries);
+}
+
+function matchesSelectedCountry(
+  location: string | null | undefined,
+  selectedCountry: string,
+): boolean {
+  const matchedCountries = inferCountriesFromLocation(location);
+  if (matchedCountries.length === 0) return true;
+  return matchedCountries.includes(normalizeCountryKey(selectedCountry));
+}
+
+function filterJobsByRequestedCountry(args: {
+  jobs: CreateJobInput[];
+  selectedCountry: string;
+}): CreateJobInput[] {
+  const { jobs, selectedCountry } = args;
+  return jobs.filter((job) =>
+    matchesSelectedCountry(job.location, selectedCountry),
+  );
+}
+
+function isExplicitlyRemote(job: CreateJobInput): boolean {
+  if (job.isRemote === true) return true;
+
+  const remoteFields = [job.location, job.workFromHomeType, job.title];
+  return remoteFields.some((value) => /\bremote\b/i.test(value ?? ""));
+}
+
+function filterJobsForRemoteOnly(jobs: CreateJobInput[]): CreateJobInput[] {
+  return jobs.filter(isExplicitlyRemote);
+}
+
 function filterJobsByRequestedCities(args: {
   jobs: CreateJobInput[];
   selectedCountry: string;
   requestedCities: string[];
+  includeCountryRemote: boolean;
 }): CreateJobInput[] {
-  const { jobs, selectedCountry, requestedCities } = args;
+  const { jobs, selectedCountry, requestedCities, includeCountryRemote } = args;
   if (requestedCities.length === 0) return jobs;
 
-  return jobs.filter((job) =>
-    requestedCities.some((requestedCity) => {
+  return jobs.filter((job) => {
+    const matchesCity = requestedCities.some((requestedCity) => {
       const strict = shouldApplyStrictCityFilter(
         requestedCity,
         selectedCountry,
       );
       if (!strict) return true;
       return matchesRequestedCity(job.location, requestedCity);
-    }),
-  );
+    });
+    if (matchesCity) return true;
+
+    if (includeCountryRemote && isExplicitlyRemote(job)) {
+      return matchesSelectedCountry(job.location, selectedCountry);
+    }
+    return false;
+  });
 }
 
 export async function discoverJobsStep(args: {
@@ -104,6 +201,22 @@ export async function discoverJobsStep(args: {
       .split("|")
       .map((term) => term.trim())
       .filter(Boolean);
+  }
+
+  const sanitizedSearchTerms = sanitizeDiscoverySearchTerms(searchTerms);
+  searchTerms = sanitizedSearchTerms.accepted;
+
+  if (sanitizedSearchTerms.dropped.length > 0) {
+    logger.info("Dropped low-signal discovery search terms", {
+      step: "discover-jobs",
+      droppedSearchTerms: sanitizedSearchTerms.dropped,
+    });
+  }
+
+  if (searchTerms.length === 0) {
+    throw new Error(
+      "No valid search queries. Use full role phrases instead of standalone tags.",
+    );
   }
 
   const selectedCountry = normalizeCountryKey(
@@ -289,13 +402,31 @@ export async function discoverJobsStep(args: {
     sourceErrors.push(...sourceResult.sourceErrors);
   }
 
-  const requestedCities = resolveSearchCities({
+  const requestedCityInputs = resolveSearchCities({
     single: settings.searchCities ?? settings.jobspyLocation,
   });
+  const sanitizedRequestedCities =
+    sanitizeDiscoveryLocations(requestedCityInputs);
+  const requestedCities = sanitizedRequestedCities.accepted;
+
+  if (sanitizedRequestedCities.dropped.length > 0) {
+    logger.info("Dropped non-city discovery locations", {
+      step: "discover-jobs",
+      droppedLocations: sanitizedRequestedCities.dropped,
+      selectedCountry,
+    });
+  }
+
+  const includeCountryRemote =
+    settings.includeCountryRemote !== undefined
+      ? parseBooleanSetting(settings.includeCountryRemote)
+      : true;
+
   const cityFilteredJobs = filterJobsByRequestedCities({
     jobs: discoveredJobs,
     selectedCountry,
     requestedCities,
+    includeCountryRemote,
   });
   const cityFilteredOutCount = discoveredJobs.length - cityFilteredJobs.length;
 
@@ -308,16 +439,48 @@ export async function discoverJobsStep(args: {
     });
   }
 
+  const countryFilteredJobs = filterJobsByRequestedCountry({
+    jobs: cityFilteredJobs,
+    selectedCountry,
+  });
+  const countryFilteredOutCount =
+    cityFilteredJobs.length - countryFilteredJobs.length;
+
+  if (countryFilteredOutCount > 0) {
+    logger.info(
+      "Dropped discovered jobs that clearly mismatched the selected country",
+      {
+        step: "discover-jobs",
+        droppedCount: countryFilteredOutCount,
+        selectedCountry,
+      },
+    );
+  }
+
+  const remoteFilteredJobs = parseBooleanSetting(settings.jobspyIsRemote)
+    ? filterJobsForRemoteOnly(countryFilteredJobs)
+    : countryFilteredJobs;
+  const remoteFilteredOutCount =
+    countryFilteredJobs.length - remoteFilteredJobs.length;
+
+  if (remoteFilteredOutCount > 0) {
+    logger.info("Dropped discovered jobs that were not explicitly remote", {
+      step: "discover-jobs",
+      droppedCount: remoteFilteredOutCount,
+    });
+  }
+
   const blockedCompanyKeywords = parseBlockedCompanyKeywords(
     settings.blockedCompanyKeywords,
   );
   const blockedKeywordsLowerCase = blockedCompanyKeywords.map((value) =>
     value.toLowerCase(),
   );
-  const filteredDiscoveredJobs = cityFilteredJobs.filter(
+  const filteredDiscoveredJobs = remoteFilteredJobs.filter(
     (job) => !isBlockedEmployer(job.employer, blockedKeywordsLowerCase),
   );
-  const droppedCount = cityFilteredJobs.length - filteredDiscoveredJobs.length;
+  const droppedCount =
+    remoteFilteredJobs.length - filteredDiscoveredJobs.length;
 
   if (droppedCount > 0) {
     const blockedCompanyKeywordsPreview = blockedCompanyKeywords.slice(0, 10);
