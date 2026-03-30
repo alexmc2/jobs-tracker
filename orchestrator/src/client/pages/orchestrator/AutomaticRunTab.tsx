@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableDropdown } from "@/components/ui/searchable-dropdown";
@@ -60,6 +61,8 @@ const DEFAULT_VALUES: AutomaticRunValues = {
   runBudget: 200,
   country: "united kingdom",
   cityLocations: [],
+  isRemoteOnly: false,
+  includeCountryRemote: true,
 };
 
 interface AutomaticRunFormValues {
@@ -71,9 +74,22 @@ interface AutomaticRunFormValues {
   cityLocationDraft: string;
   searchTerms: string[];
   searchTermDraft: string;
+  isRemoteOnly: boolean;
+  includeCountryRemote: boolean;
 }
 
 type AutomaticPresetSelection = AutomaticPresetId | "custom";
+
+const DEVELOPER_ROLE_SUGGESTIONS = [
+  "Full-Stack Developer",
+  "Software Engineer",
+  "Frontend Engineer",
+  "Backend Engineer",
+  "React Developer",
+  "Next.js Developer",
+  "TypeScript Developer",
+  "Node.js Developer",
+];
 
 const GLASSDOOR_COUNTRY_REASON =
   "Glassdoor is not available for the selected country.";
@@ -106,6 +122,28 @@ function toNumber(input: string, min: number, max: number, fallback: number) {
   const parsed = Number.parseInt(input, 10);
   if (Number.isNaN(parsed)) return fallback;
   return Math.min(max, Math.max(min, parsed));
+}
+
+function normalizeSearchTermKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function appendUniqueSearchTerm(values: string[], next: string): string[] {
+  const normalizedNext = next.trim();
+  if (!normalizedNext) return values;
+
+  const nextKey = normalizeSearchTermKey(normalizedNext);
+  if (!nextKey) return values;
+
+  if (values.some((value) => normalizeSearchTermKey(value) === nextKey)) {
+    return values;
+  }
+
+  return [...values, normalizedNext];
 }
 
 function getPresetSelection(values: {
@@ -161,6 +199,8 @@ export const AutomaticRunTab: React.FC<AutomaticRunTabProps> = ({
       cityLocationDraft: "",
       searchTerms: DEFAULT_VALUES.searchTerms,
       searchTermDraft: "",
+      isRemoteOnly: DEFAULT_VALUES.isRemoteOnly,
+      includeCountryRemote: DEFAULT_VALUES.includeCountryRemote,
     },
   });
 
@@ -172,6 +212,8 @@ export const AutomaticRunTab: React.FC<AutomaticRunTabProps> = ({
   const cityLocationDraft = watch("cityLocationDraft");
   const searchTerms = watch("searchTerms");
   const searchTermDraft = watch("searchTermDraft");
+  const isRemoteOnly = watch("isRemoteOnly");
+  const includeCountryRemote = watch("includeCountryRemote");
 
   useEffect(() => {
     if (!open) return;
@@ -222,6 +264,11 @@ export const AutomaticRunTab: React.FC<AutomaticRunTabProps> = ({
       cityLocationDraft: "",
       searchTerms: settings?.searchTerms?.value ?? DEFAULT_VALUES.searchTerms,
       searchTermDraft: "",
+      isRemoteOnly:
+        settings?.jobspyIsRemote?.value ?? DEFAULT_VALUES.isRemoteOnly,
+      includeCountryRemote:
+        settings?.includeCountryRemote?.value ??
+        DEFAULT_VALUES.includeCountryRemote,
     });
     setAdvancedOpen(false);
   }, [open, settings, reset]);
@@ -240,6 +287,8 @@ export const AutomaticRunTab: React.FC<AutomaticRunTabProps> = ({
       country: normalizedCountry || DEFAULT_VALUES.country,
       cityLocations,
       searchTerms,
+      isRemoteOnly,
+      includeCountryRemote,
     };
   }, [
     topNInput,
@@ -248,7 +297,22 @@ export const AutomaticRunTab: React.FC<AutomaticRunTabProps> = ({
     countryInput,
     cityLocations,
     searchTerms,
+    isRemoteOnly,
+    includeCountryRemote,
   ]);
+
+  const suggestedSearchTerms = useMemo(
+    () =>
+      DEVELOPER_ROLE_SUGGESTIONS.filter(
+        (suggestion) =>
+          !searchTerms.some(
+            (term) =>
+              normalizeSearchTermKey(term) ===
+              normalizeSearchTermKey(suggestion),
+          ),
+      ),
+    [searchTerms],
+  );
 
   const isSourceAvailableForRun = useCallback(
     (source: JobSource) => {
@@ -469,9 +533,62 @@ export const AutomaticRunTab: React.FC<AutomaticRunTabProps> = ({
                           })
                         }
                         placeholder='e.g. "London"'
-                        helperText="Optional for all sources, required when Glassdoor is selected."
+                        helperText="Optional for all sources, required when Glassdoor is selected. City names only; do not add remote here."
                         removeLabelPrefix="Remove city"
                       />
+                    </div>
+                    <div className="space-y-2 md:col-span-3">
+                      <div className="flex items-start gap-3 rounded-lg border border-border/60 p-3">
+                        <Checkbox
+                          id="remote-only"
+                          checked={isRemoteOnly}
+                          onCheckedChange={(checked) =>
+                            setValue("isRemoteOnly", checked === true, {
+                              shouldDirty: true,
+                            })
+                          }
+                        />
+                        <div className="space-y-1">
+                          <Label
+                            htmlFor="remote-only"
+                            className="cursor-pointer text-sm font-medium"
+                          >
+                            Remote only
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            Prefer explicitly remote roles and apply an
+                            additional shared remote filter after discovery when
+                            the source data makes that safe.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-2 md:col-span-3">
+                      <div className="flex items-start gap-3 rounded-lg border border-border/60 p-3">
+                        <Checkbox
+                          id="include-country-remote"
+                          checked={includeCountryRemote}
+                          disabled={isRemoteOnly}
+                          onCheckedChange={(checked) =>
+                            setValue("includeCountryRemote", checked === true, {
+                              shouldDirty: true,
+                            })
+                          }
+                        />
+                        <div className="space-y-1">
+                          <Label
+                            htmlFor="include-country-remote"
+                            className="cursor-pointer text-sm font-medium"
+                          >
+                            Include country-wide remote jobs
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            When cities are set, also keeps remote roles scoped
+                            to the selected country. No effect without cities or
+                            when Remote only is on.
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </AccordionContent>
@@ -482,9 +599,36 @@ export const AutomaticRunTab: React.FC<AutomaticRunTabProps> = ({
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle>Search terms</CardTitle>
+            <CardTitle>Role queries</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 space-y-2">
+              <div className="text-sm font-medium">Suggested role queries</div>
+              <div className="flex flex-wrap gap-2">
+                {suggestedSearchTerms.map((term) => (
+                  <Button
+                    key={term}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setValue(
+                        "searchTerms",
+                        appendUniqueSearchTerm(searchTerms, term),
+                        { shouldDirty: true },
+                      )
+                    }
+                  >
+                    {term}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Each entry runs as a separate search query. Use full role
+                phrases like backend developer or full-stack engineer, not
+                standalone tags like remote or API.
+              </p>
+            </div>
             <TokenizedInput
               id="search-terms-input"
               values={searchTerms}
@@ -495,7 +639,7 @@ export const AutomaticRunTab: React.FC<AutomaticRunTabProps> = ({
                 setValue("searchTerms", value, { shouldDirty: true })
               }
               placeholder="Type and press Enter"
-              helperText="Add multiple terms by separating with commas or pressing Enter."
+              helperText="Each entry is a separate search query, not a filter. Use full role phrases."
               removeLabelPrefix="Remove"
             />
           </CardContent>

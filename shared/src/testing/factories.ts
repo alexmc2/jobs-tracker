@@ -180,6 +180,8 @@ export const createAppSettings = (
     default: "united kingdom",
     override: null,
   },
+  jobspyIsRemote: { value: false, default: false, override: null },
+  includeCountryRemote: { value: true, default: true, override: null },
   showSponsorInfo: { value: true, default: true, override: null },
   chatStyleTone: {
     value: "professional",

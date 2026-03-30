@@ -325,6 +325,31 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
     }
   };
 
+  const handleRestore = async () => {
+    if (!selectedJob) return;
+    try {
+      await api.updateJob(selectedJob.id, { status: "discovered" });
+      trackProductEvent("jobs_job_action_completed", {
+        action: "restore",
+        result: "success",
+        from_status: selectedJob.status,
+        to_status: "discovered",
+      });
+      toast.success("Job restored to discovered");
+      await onJobUpdated();
+    } catch (error) {
+      trackProductEvent("jobs_job_action_completed", {
+        action: "restore",
+        result: "error",
+        from_status: selectedJob.status,
+        to_status: "discovered",
+      });
+      const message =
+        error instanceof Error ? error.message : "Failed to restore job";
+      toast.error(message);
+    }
+  };
+
   const handleCopyInfo = async () => {
     if (!selectedJob) return;
     try {
@@ -354,13 +379,18 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
   const selectedPdfHref = selectedJob
     ? `/pdfs/resume_${selectedJob.id}.pdf?v=${encodeURIComponent(selectedJob.updatedAt)}`
     : "#";
-  const canApply = selectedJob?.status === "ready";
+  const canApply = selectedJob
+    ? !["applied", "skipped", "expired"].includes(selectedJob.status)
+    : false;
   const canMoveToInProgress = selectedJob?.status === "applied";
   const canProcess = selectedJob
     ? ["discovered", "ready"].includes(selectedJob.status)
     : false;
   const canSkip = selectedJob
     ? ["discovered", "ready"].includes(selectedJob.status)
+    : false;
+  const canRestore = selectedJob
+    ? !["discovered", "processing"].includes(selectedJob.status)
     : false;
   const showReadyPdf = activeTab === "ready";
   const showGeneratePdf = activeTab === "discovered";
@@ -579,6 +609,15 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
                 >
                   <XCircle className="mr-2 h-4 w-4" />
                   Skip job
+                </DropdownMenuItem>
+              </>
+            )}
+            {canRestore && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => void handleRestore()}>
+                  <RefreshCcw className="mr-2 h-4 w-4" />
+                  Restore to discovered
                 </DropdownMenuItem>
               </>
             )}

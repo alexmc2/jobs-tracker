@@ -63,6 +63,8 @@ let mockAutomaticRunValues: AutomaticRunValues = {
   runBudget: 150,
   country: "united kingdom",
   cityLocations: [],
+  isRemoteOnly: false,
+  includeCountryRemote: true,
 };
 
 const jobFixture = createJob({
@@ -402,6 +404,8 @@ describe("OrchestratorPage", () => {
       runBudget: 150,
       country: "united kingdom",
       cityLocations: [],
+      isRemoteOnly: false,
+      includeCountryRemote: true,
     };
   });
 
@@ -755,6 +759,8 @@ describe("OrchestratorPage", () => {
         adzunaMaxJobsPerTerm: 150,
         startupjobsMaxJobsPerTerm: 150,
         jobspyCountryIndeed: "united kingdom",
+        jobspyIsRemote: false,
+        includeCountryRemote: true,
         searchCities: "United Kingdom",
       });
     });
@@ -780,6 +786,8 @@ describe("OrchestratorPage", () => {
       runBudget: 150,
       country: "united kingdom",
       cityLocations: ["London", "Manchester"],
+      isRemoteOnly: false,
+      includeCountryRemote: true,
     };
 
     render(
@@ -802,6 +810,56 @@ describe("OrchestratorPage", () => {
     });
   });
 
+  it("drops broad search tags and pseudo-locations before saving automatic settings", async () => {
+    window.matchMedia = createMatchMedia(
+      true,
+    ) as unknown as typeof window.matchMedia;
+    mockPipelineSources = ["linkedin"];
+    mockAutomaticRunValues = {
+      topN: 12,
+      minSuitabilityScore: 55,
+      searchTerms: [
+        "backend developer",
+        "remote",
+        "APIs",
+        "React",
+        "python developer",
+      ],
+      runBudget: 150,
+      country: "united kingdom",
+      cityLocations: ["Brighton", "remote", "London"],
+      isRemoteOnly: false,
+      includeCountryRemote: true,
+    };
+
+    render(
+      <MemoryRouter initialEntries={["/jobs/ready"]}>
+        <Routes>
+          <Route path="/jobs/:tab" element={<OrchestratorPage />} />
+          <Route path="/jobs/:tab/:jobId" element={<OrchestratorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByTestId("run-automatic"));
+
+    await waitFor(() => {
+      expect(api.updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          searchTerms: ["backend developer", "python developer"],
+          searchCities: "Brighton|London",
+        }),
+      );
+    });
+
+    expect(toast.message).toHaveBeenCalledWith("Ignored broad search tags", {
+      description: "remote, APIs, React",
+    });
+    expect(toast.message).toHaveBeenCalledWith("Ignored non-city locations", {
+      description: "remote",
+    });
+  });
+
   it("stores multiple cities when only adzuna is selected", async () => {
     window.matchMedia = createMatchMedia(
       true,
@@ -814,6 +872,8 @@ describe("OrchestratorPage", () => {
       runBudget: 150,
       country: "united kingdom",
       cityLocations: ["Leeds", "Manchester"],
+      isRemoteOnly: false,
+      includeCountryRemote: true,
     };
 
     render(
@@ -848,6 +908,8 @@ describe("OrchestratorPage", () => {
       runBudget: 150,
       country: "united kingdom",
       cityLocations: ["Leeds", "Manchester"],
+      isRemoteOnly: false,
+      includeCountryRemote: true,
     };
 
     render(
@@ -954,6 +1016,8 @@ describe("OrchestratorPage", () => {
       runBudget: 150,
       country: "united states",
       cityLocations: [],
+      isRemoteOnly: false,
+      includeCountryRemote: true,
     };
 
     render(

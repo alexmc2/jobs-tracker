@@ -59,13 +59,19 @@ Incompatible sources are disabled with explanatory tooltips.
 - **Resumes tailored** (`topN`)
 - **Min suitability score**
 - **Max jobs discovered** (run budget cap)
-- **Search cities** (optional multi-city input; required for Glassdoor)
+- **Search cities** (optional multi-city input; required for Glassdoor; city names only)
+- **Remote only** (prefers explicitly remote roles and applies an extra remote filter after discovery when reliable source data is available)
+- **Include country-wide remote jobs** (when cities are set, also keeps remote roles scoped to the selected country; no effect without cities or when Remote only is on; enabled by default)
 
-#### Search terms
+#### Role queries
 
-- Add terms with Enter or commas.
-- Multiple terms increase discovery breadth and runtime.
-- At least one search term is required.
+- Add queries with Enter or commas.
+- Each entry runs as a separate search query, not a stacked filter.
+- Use full role phrases such as `backend developer` or `full-stack engineer`.
+- Avoid standalone tags such as `remote`, `API`, `React`, or `SQL`; those broaden results instead of narrowing them.
+- Use the suggested role chips for common web and full-stack titles when you want a faster starting point.
+- Multiple queries increase discovery breadth and runtime.
+- At least one valid role query is required.
 
 #### Estimate and run gating
 
@@ -76,7 +82,7 @@ The footer estimate shows expected discovered jobs and resume-processing range.
 - a run is already in progress
 - required save/run work is still in progress
 - no compatible sources are selected
-- no search terms are present
+- no valid role queries are present
 
 ### Manual tab
 
@@ -109,6 +115,24 @@ For accepted input formats, inference behavior, and limits, see [Manual Import E
 - Reduce term count.
 - Use `Fast` preset or lower `Max jobs discovered`.
 - Disable high-cost source combinations where acceptable.
+
+### Remote-only returns fewer jobs than expected
+
+- Not every source exposes reliable remote metadata.
+- Turn `Remote only` off when you want broader discovery and plan to review location manually.
+- Add city filters only when you want a tighter geographic match.
+
+### City search misses country-scoped remote jobs
+
+- Enable **Include country-wide remote jobs** in Advanced settings (on by default).
+- This keeps remote roles matching the selected country alongside city-specific results.
+- If you only want exact city matches, disable the toggle.
+
+### Search results look too broad or irrelevant
+
+- Remove standalone tech tags such as `API`, `React`, `TypeScript`, or `SQL`.
+- Use full role phrases such as `backend developer`, `software engineer`, or `data analyst`.
+- Do not add `remote` as a city; use the `Remote only` toggle instead.
 
 ## Related pages
 
