@@ -1,19 +1,19 @@
-import * as api from '@client/api';
+import * as api from "@client/api";
 import {
   DiscoveredPanel,
   FitAssessment,
   JobHeader,
   TailoredSummary,
-} from '@client/components';
-import { JobDetailsEditDrawer } from '@client/components/JobDetailsEditDrawer';
-import { ReadyPanel } from '@client/components/ReadyPanel';
-import { TailoringEditor } from '@client/components/TailoringEditor';
+} from "@client/components";
+import { JobDetailsEditDrawer } from "@client/components/JobDetailsEditDrawer";
+import { ReadyPanel } from "@client/components/ReadyPanel";
+import { TailoringEditor } from "@client/components/TailoringEditor";
 import {
   useMarkAsAppliedMutation,
   useSkipJobMutation,
-} from '@client/hooks/queries/useJobMutations';
-import { useProfile } from '@client/hooks/useProfile';
-import type { Job, JobListItem } from '@shared/types.js';
+} from "@client/hooks/queries/useJobMutations";
+import { useProfile } from "@client/hooks/useProfile";
+import type { Job, JobListItem } from "@shared/types.js";
 import {
   CheckCircle2,
   Copy,
@@ -25,30 +25,30 @@ import {
   RefreshCcw,
   Save,
   XCircle,
-} from 'lucide-react';
-import type React from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+} from "lucide-react";
+import type React from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
-import { trackProductEvent } from '@/lib/analytics';
+} from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { trackProductEvent } from "@/lib/analytics";
 import {
   copyTextToClipboard,
   formatJobForWebhook,
   safeFilenamePart,
   stripHtml,
-} from '@/lib/utils';
-import type { FilterTab } from './constants';
+} from "@/lib/utils";
+import type { FilterTab } from "./constants";
 
 interface JobDetailPanelProps {
   activeTab: FilterTab;
@@ -68,10 +68,10 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
   onPauseRefreshChange,
 }) => {
   const [detailTab, setDetailTab] = useState<
-    'overview' | 'tailoring' | 'description'
-  >('overview');
+    "overview" | "tailoring" | "description"
+  >("overview");
   const [isEditingDescription, setIsEditingDescription] = useState(false);
-  const [editedDescription, setEditedDescription] = useState('');
+  const [editedDescription, setEditedDescription] = useState("");
   const [isSavingDescription, setIsSavingDescription] = useState(false);
   const [hasUnsavedTailoring, setHasUnsavedTailoring] = useState(false);
   const [processingJobId, setProcessingJobId] = useState<string | null>(null);
@@ -105,28 +105,28 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
   }, [onPauseRefreshChange]);
 
   const description = useMemo(() => {
-    if (!selectedJob?.jobDescription) return 'No description available.';
+    if (!selectedJob?.jobDescription) return "No description available.";
     const jd = selectedJob.jobDescription;
-    if (jd.includes('<') && jd.includes('>')) return stripHtml(jd);
+    if (jd.includes("<") && jd.includes(">")) return stripHtml(jd);
     return jd;
   }, [selectedJob]);
 
   useEffect(() => {
     if (!selectedJob) {
       setIsEditingDescription(false);
-      setEditedDescription('');
+      setEditedDescription("");
       setIsEditDetailsOpen(false);
       return;
     }
     setIsEditingDescription(false);
-    setEditedDescription(selectedJob.jobDescription || '');
+    setEditedDescription(selectedJob.jobDescription || "");
     setIsEditDetailsOpen(false);
   }, [selectedJob?.id, selectedJob]);
 
   useEffect(() => {
     if (!selectedJob) return;
     if (!isEditingDescription) {
-      setEditedDescription(selectedJob.jobDescription || '');
+      setEditedDescription(selectedJob.jobDescription || "");
     }
   }, [selectedJob?.jobDescription, isEditingDescription, selectedJob]);
 
@@ -137,12 +137,12 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
       await api.updateJob(selectedJob.id, {
         jobDescription: editedDescription,
       });
-      toast.success('Job description updated');
+      toast.success("Job description updated");
       setIsEditingDescription(false);
       await onJobUpdated();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Failed to update description';
+        error instanceof Error ? error.message : "Failed to update description";
       toast.error(message);
     } finally {
       setIsSavingDescription(false);
@@ -152,7 +152,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
   const hasUnsavedDescription =
     !!selectedJob &&
     isEditingDescription &&
-    editedDescription !== (selectedJob.jobDescription || '');
+    editedDescription !== (selectedJob.jobDescription || "");
 
   const confirmAndSaveEdits = useCallback(
     async ({
@@ -166,10 +166,10 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
       if (!pendingDescription && !pendingTailoring) return true;
 
       const parts = [];
-      if (pendingDescription) parts.push('job description');
-      if (pendingTailoring) parts.push('tailoring changes');
+      if (pendingDescription) parts.push("job description");
+      if (pendingTailoring) parts.push("tailoring changes");
 
-      const message = `You have unsaved ${parts.join(' and ')}. Save before generating the PDF?`;
+      const message = `You have unsaved ${parts.join(" and ")}. Save before generating the PDF?`;
       if (!window.confirm(message)) return false;
 
       try {
@@ -182,14 +182,14 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         if (pendingTailoring) {
           const saveTailoring = saveTailoringRef.current;
           if (!saveTailoring) {
-            toast.error('Could not save tailoring changes');
+            toast.error("Could not save tailoring changes");
             return false;
           }
           await saveTailoring();
         }
       } catch (error) {
         const errorMessage =
-          error instanceof Error ? error.message : 'Failed to save changes';
+          error instanceof Error ? error.message : "Failed to save changes";
         toast.error(errorMessage);
         return false;
       }
@@ -214,34 +214,34 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
 
       setProcessingJobId(selectedJob.id);
 
-      if (selectedJob.status === 'ready') {
+      if (selectedJob.status === "ready") {
         await api.generateJobPdf(selectedJob.id);
-        trackProductEvent('jobs_job_action_completed', {
-          action: 'generate_pdf',
-          result: 'success',
+        trackProductEvent("jobs_job_action_completed", {
+          action: "generate_pdf",
+          result: "success",
           from_status: selectedJob.status,
         });
-        toast.success('Resume regenerated successfully');
+        toast.success("Resume regenerated successfully");
       } else {
         await api.processJob(selectedJob.id);
-        trackProductEvent('jobs_job_action_completed', {
-          action: 'process_job',
-          result: 'success',
+        trackProductEvent("jobs_job_action_completed", {
+          action: "process_job",
+          result: "success",
           from_status: selectedJob.status,
-          to_status: 'ready',
+          to_status: "ready",
         });
-        toast.success('Resume generated successfully');
+        toast.success("Resume generated successfully");
       }
       await onJobUpdated();
     } catch (error) {
-      trackProductEvent('jobs_job_action_completed', {
-        action: selectedJob.status === 'ready' ? 'generate_pdf' : 'process_job',
-        result: 'error',
+      trackProductEvent("jobs_job_action_completed", {
+        action: selectedJob.status === "ready" ? "generate_pdf" : "process_job",
+        result: "error",
         from_status: selectedJob.status,
-        ...(selectedJob.status === 'ready' ? {} : { to_status: 'ready' }),
+        ...(selectedJob.status === "ready" ? {} : { to_status: "ready" }),
       });
       const message =
-        error instanceof Error ? error.message : 'Failed to process job';
+        error instanceof Error ? error.message : "Failed to process job";
       toast.error(message);
     } finally {
       setProcessingJobId(null);
@@ -252,23 +252,23 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
     if (!selectedJob) return;
     try {
       await markAsAppliedMutation.mutateAsync(selectedJob.id);
-      trackProductEvent('jobs_job_action_completed', {
-        action: 'mark_applied',
-        result: 'success',
+      trackProductEvent("jobs_job_action_completed", {
+        action: "mark_applied",
+        result: "success",
         from_status: selectedJob.status,
-        to_status: 'applied',
+        to_status: "applied",
       });
-      toast.success('Marked as applied');
+      toast.success("Marked as applied");
       await onJobUpdated();
     } catch (error) {
-      trackProductEvent('jobs_job_action_completed', {
-        action: 'mark_applied',
-        result: 'error',
+      trackProductEvent("jobs_job_action_completed", {
+        action: "mark_applied",
+        result: "error",
         from_status: selectedJob.status,
-        to_status: 'applied',
+        to_status: "applied",
       });
       const message =
-        error instanceof Error ? error.message : 'Failed to mark as applied';
+        error instanceof Error ? error.message : "Failed to mark as applied";
       toast.error(message);
     }
   };
@@ -277,23 +277,23 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
     if (!selectedJob) return;
     try {
       await skipJobMutation.mutateAsync(selectedJob.id);
-      trackProductEvent('jobs_job_action_completed', {
-        action: 'skip',
-        result: 'success',
+      trackProductEvent("jobs_job_action_completed", {
+        action: "skip",
+        result: "success",
         from_status: selectedJob.status,
-        to_status: 'skipped',
+        to_status: "skipped",
       });
-      toast.message('Job skipped');
+      toast.message("Job skipped");
       await onJobUpdated();
     } catch (error) {
-      trackProductEvent('jobs_job_action_completed', {
-        action: 'skip',
-        result: 'error',
+      trackProductEvent("jobs_job_action_completed", {
+        action: "skip",
+        result: "error",
         from_status: selectedJob.status,
-        to_status: 'skipped',
+        to_status: "skipped",
       });
       const message =
-        error instanceof Error ? error.message : 'Failed to skip job';
+        error instanceof Error ? error.message : "Failed to skip job";
       toast.error(message);
     }
   };
@@ -301,26 +301,26 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
   const handleMoveToInProgress = async () => {
     if (!selectedJob) return;
     try {
-      await api.updateJob(selectedJob.id, { status: 'in_progress' });
-      trackProductEvent('jobs_job_action_completed', {
-        action: 'move_in_progress',
-        result: 'success',
+      await api.updateJob(selectedJob.id, { status: "in_progress" });
+      trackProductEvent("jobs_job_action_completed", {
+        action: "move_in_progress",
+        result: "success",
         from_status: selectedJob.status,
-        to_status: 'in_progress',
+        to_status: "in_progress",
       });
-      toast.success('Moved to in progress');
+      toast.success("Moved to in progress");
       await onJobUpdated();
     } catch (error) {
-      trackProductEvent('jobs_job_action_completed', {
-        action: 'move_in_progress',
-        result: 'error',
+      trackProductEvent("jobs_job_action_completed", {
+        action: "move_in_progress",
+        result: "error",
         from_status: selectedJob.status,
-        to_status: 'in_progress',
+        to_status: "in_progress",
       });
       const message =
         error instanceof Error
           ? error.message
-          : 'Failed to move to in progress';
+          : "Failed to move to in progress";
       toast.error(message);
     }
   };
@@ -328,24 +328,24 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
   const handleRestore = async () => {
     if (!selectedJob) return;
     try {
-      await api.updateJob(selectedJob.id, { status: 'discovered' });
-      trackProductEvent('jobs_job_action_completed', {
-        action: 'restore',
-        result: 'success',
+      await api.updateJob(selectedJob.id, { status: "discovered" });
+      trackProductEvent("jobs_job_action_completed", {
+        action: "restore",
+        result: "success",
         from_status: selectedJob.status,
-        to_status: 'discovered',
+        to_status: "discovered",
       });
-      toast.success('Job restored to discovered');
+      toast.success("Job restored to discovered");
       await onJobUpdated();
     } catch (error) {
-      trackProductEvent('jobs_job_action_completed', {
-        action: 'restore',
-        result: 'error',
+      trackProductEvent("jobs_job_action_completed", {
+        action: "restore",
+        result: "error",
         from_status: selectedJob.status,
-        to_status: 'discovered',
+        to_status: "discovered",
       });
       const message =
-        error instanceof Error ? error.message : 'Failed to restore job';
+        error instanceof Error ? error.message : "Failed to restore job";
       toast.error(message);
     }
   };
@@ -354,11 +354,11 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
     if (!selectedJob) return;
     try {
       await copyTextToClipboard(formatJobForWebhook(selectedJob));
-      toast.success('Copied job info', {
-        description: 'Webhook payload copied to clipboard.',
+      toast.success("Copied job info", {
+        description: "Webhook payload copied to clipboard.",
       });
     } catch {
-      toast.error('Could not copy job info');
+      toast.error("Could not copy job info");
     }
   };
 
@@ -375,30 +375,30 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
   const selectedHasPdf = !!selectedJob?.pdfPath;
   const selectedJobLink = selectedJob
     ? selectedJob.applicationLink || selectedJob.jobUrl
-    : '#';
+    : "#";
   const selectedPdfHref = selectedJob
     ? `/pdfs/resume_${selectedJob.id}.pdf?v=${encodeURIComponent(selectedJob.updatedAt)}`
-    : '#';
+    : "#";
   const canApply = selectedJob
-    ? !['applied', 'skipped', 'expired'].includes(selectedJob.status)
+    ? !["applied", "skipped", "expired"].includes(selectedJob.status)
     : false;
-  const canMoveToInProgress = selectedJob?.status === 'applied';
+  const canMoveToInProgress = selectedJob?.status === "applied";
   const canProcess = selectedJob
-    ? ['discovered', 'ready'].includes(selectedJob.status)
+    ? ["discovered", "ready"].includes(selectedJob.status)
     : false;
   const canSkip = selectedJob
-    ? ['discovered', 'ready'].includes(selectedJob.status)
+    ? ["discovered", "ready"].includes(selectedJob.status)
     : false;
   const canRestore = selectedJob
-    ? !['discovered', 'processing'].includes(selectedJob.status)
+    ? !["discovered", "processing"].includes(selectedJob.status)
     : false;
-  const showReadyPdf = activeTab === 'ready';
-  const showGeneratePdf = activeTab === 'discovered';
+  const showReadyPdf = activeTab === "ready";
+  const showGeneratePdf = activeTab === "discovered";
   const isProcessingSelected = selectedJob
-    ? processingJobId === selectedJob.id || selectedJob.status === 'processing'
+    ? processingJobId === selectedJob.id || selectedJob.status === "processing"
     : false;
 
-  if (activeTab === 'discovered') {
+  if (activeTab === "discovered") {
     return (
       <DiscoveredPanel
         job={selectedJob}
@@ -409,7 +409,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
     );
   }
 
-  if (activeTab === 'ready') {
+  if (activeTab === "ready") {
     return (
       <ReadyPanel
         job={selectedJob}
@@ -440,16 +440,16 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
         onCheckSponsor={async () => {
           try {
             await api.checkSponsor(selectedJob.id);
-            trackProductEvent('jobs_job_action_completed', {
-              action: 'check_sponsor',
-              result: 'success',
+            trackProductEvent("jobs_job_action_completed", {
+              action: "check_sponsor",
+              result: "success",
               from_status: selectedJob.status,
             });
             await onJobUpdated();
           } catch (error) {
-            trackProductEvent('jobs_job_action_completed', {
-              action: 'check_sponsor',
-              result: 'error',
+            trackProductEvent("jobs_job_action_completed", {
+              action: "check_sponsor",
+              result: "error",
               from_status: selectedJob.status,
             });
             throw error;
@@ -512,7 +512,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
             ) : (
               <RefreshCcw className="h-3.5 w-3.5" />
             )}
-            {isProcessingSelected ? 'Generating...' : 'Generate'}
+            {isProcessingSelected ? "Generating..." : "Generate"}
           </Button>
         )}
 
@@ -552,15 +552,15 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
               >
                 <RefreshCcw className="mr-2 h-4 w-4" />
                 {isProcessingSelected
-                  ? 'Processing...'
-                  : selectedJob.status === 'ready'
-                    ? 'Regenerate PDF'
-                    : 'Generate PDF'}
+                  ? "Processing..."
+                  : selectedJob.status === "ready"
+                    ? "Regenerate PDF"
+                    : "Generate PDF"}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
               onSelect={() => {
-                setDetailTab('description');
+                setDetailTab("description");
                 setIsEditingDescription(true);
               }}
             >
@@ -592,7 +592,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
                 <DropdownMenuItem asChild>
                   <a
                     href={selectedPdfHref}
-                    download={`${safeFilenamePart(personName || 'Unknown')}_${safeFilenamePart(selectedJob.employer || 'Unknown')}.pdf`}
+                    download={`${safeFilenamePart(personName || "Unknown")}_${safeFilenamePart(selectedJob.employer || "Unknown")}.pdf`}
                   >
                     <FileText className="mr-2 h-4 w-4" />
                     Download PDF
@@ -650,7 +650,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
                 Discipline
               </div>
               <div className="text-foreground/80">
-                {selectedJob.disciplines || '-'}
+                {selectedJob.disciplines || "-"}
               </div>
             </div>
             <div>
@@ -658,7 +658,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
                 Function
               </div>
               <div className="text-foreground/80">
-                {selectedJob.jobFunction || '-'}
+                {selectedJob.jobFunction || "-"}
               </div>
             </div>
             <div>
@@ -666,7 +666,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
                 Level
               </div>
               <div className="text-foreground/80">
-                {selectedJob.jobLevel || '-'}
+                {selectedJob.jobLevel || "-"}
               </div>
             </div>
             <div>
@@ -674,7 +674,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
                 Type
               </div>
               <div className="text-foreground/80">
-                {selectedJob.jobType || '-'}
+                {selectedJob.jobType || "-"}
               </div>
             </div>
           </div>
@@ -683,7 +683,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
             <button
               type="button"
               className="w-full text-left rounded border border-border/30 bg-muted/5 px-2.5 py-2 text-[11px] text-muted-foreground/80 line-clamp-4 whitespace-pre-wrap leading-relaxed hover:bg-muted/10 transition-colors"
-              onClick={() => setDetailTab('description')}
+              onClick={() => setDetailTab("description")}
             >
               {description}
             </button>
@@ -691,7 +691,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
               <button
                 type="button"
                 className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-                onClick={() => setDetailTab('description')}
+                onClick={() => setDetailTab("description")}
               >
                 View full description
               </button>
@@ -736,7 +736,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
                     variant="ghost"
                     onClick={() => {
                       setIsEditingDescription(false);
-                      setEditedDescription(selectedJob.jobDescription || '');
+                      setEditedDescription(selectedJob.jobDescription || "");
                     }}
                     className="h-8 px-2 text-xs text-muted-foreground"
                     disabled={isSavingDescription}
@@ -774,9 +774,9 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
                   <DropdownMenuItem
                     onSelect={() => {
                       void copyTextToClipboard(
-                        selectedJob.jobDescription || '',
+                        selectedJob.jobDescription || "",
                       );
-                      toast.success('Copied raw description');
+                      toast.success("Copied raw description");
                     }}
                   >
                     <Copy className="mr-2 h-4 w-4" />
@@ -802,7 +802,7 @@ export const JobDetailPanel: React.FC<JobDetailPanelProps> = ({
                     variant="outline"
                     onClick={() => {
                       setIsEditingDescription(false);
-                      setEditedDescription(selectedJob.jobDescription || '');
+                      setEditedDescription(selectedJob.jobDescription || "");
                     }}
                     disabled={isSavingDescription}
                   >
